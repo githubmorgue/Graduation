@@ -72,11 +72,34 @@
    - 调用 `GC.py` 生成 Benders 割
 
 #### 核心模块
-- **MP.py**: Master Problem - 主问题模型，负责求解辅助变量 A 和决策变量 x_tb
-- **RP.py**: Robust Problem - 鲁棒优化子问题，负责评估最坏情况并提取对偶变量生成割平面
-- **Ini.py**: Initialization - 各类参数和变量的初始化
+- **MP.py**: Master Problem - 主问题模型
+  - 目标函数：min A
+  - 约束类型：Benders 割平面、承运商选择约束、车道容量约束、中标数量约束
+  - 输出：最优目标值 A 和决策变量 x_tb
+
+- **RP.py**: Robust Problem - 鲁棒优化子问题
+  - 目标函数：最大化最坏情况下的成本（对偶形式）
+  - 约束类型：对偶可行性、不确定性预算约束 (sum z_l ≤ Γ)、Slack 变量约束
+  - 输出：最坏情况目标值和对偶变量
+
+- **Ini.py**: Initialization - 初始化模块
+  - `initialize_constraints_params()`: 生成 L, T, B, alpha, p_t, q_t, Q_t, N_min, N_max
+  - `initialize_function_params()`: 生成 d_bar_l, d_hat_l, LB_tb, UB_tb, c_tb, ce_l
+  - `initialize_coverage_matrix()`: 生成稀疏覆盖矩阵 a_tb_l（密度 22%~25%）
+  - `initialize_dual_variables()`: 初始化对偶变量存储结构
+  - `initialize_decision_variables()`: 初始化决策变量存储结构
+
 - **Params.py**: 模型参数的数据类定义
+  - 基础维度: T, L, B
+  - 约束参数: alpha_param, z_l, p_t, q_t, Q_t, N_min, N_max
+  - 函数参数: d_bar_l, d_hat_l, d_l, LB_tb, UB_tb, c_tb, ce_l, M, a_tb_l
+  - 决策变量: A_r, LB, UB, x_tb_r
+
 - **DualVars.py**: 对偶变量的数据类定义
+  - u[l]: 对应名义需求的对偶变量
+  - v[t][b], w[t][b]: 对应投标上下限的对偶变量
+  - g[t], h[t]: 对应承运商运输量约束的对偶变量
+  - z[l]: 对应不确定性预算的二元变量
 
 ### Al_2 核心模块详解
 

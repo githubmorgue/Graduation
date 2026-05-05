@@ -34,7 +34,7 @@ def Step_0(L, T, B, r):
     density = random.uniform(0.22, 0.25)  # 密度在 22% 到 25% 之间
     params = initialize_coverage_matrix(params, density=round(density, 4))
     # 3. 初始化对偶变量
-    dual_vars = initialize_dual_variables(params, r)
+    dual_vars = initialize_dual_variables(params)
     # 4. 初始化决策变量 x_tb_r（第1轮设为0）
     # params = initialize_decision_variables(params)
 
@@ -116,13 +116,85 @@ def Step_2(r, gamma, params, dual_vars):
         if model.status != GRB.OPTIMAL:
             raise Exception(f"RP模型在第{r}轮未找到最优解，状态码: {model.status}")
 
-        # 计算 UB = min{UB, RP目标函数值}
-        rp_obj_val = model.ObjVal
+        # 根据算法图片 Step 2 的公式计算 UB
+        # UB ← min{UB, Σd̄_l u_l^r + Σd̂_l u_l^r z_l^r + Σx_tb q_l g_t^r - Σx_tb Q_l h_t^r 
+        #          + ΣLB_tb x_tb^r v_tb^r - ΣUB_tb x_tb^r w_tb^r}
+        
+        # 从模型中获取对偶变量的值
+        u_vals = {}
+        z_vals = {}
+        g_vals = {}
+        h_vals = {}
+        v_vals = {}
+        w_vals = {}
+        
+        # 提取 u_l^r
+        for l in range(1, params.L + 1):
+            u_var = model.getVarByName(f"u_{l}")
+            u_vals[l] = u_var.X if u_var else 0.0
+        
+        # 提取 z_l^r
+        for l in range(1, params.L + 1):
+            z_var = model.getVarByName(f"z_{l}")
+            z_vals[l] = z_var.X if z_var else 0.0
+        
+        # 提取 g_t^r 和 h_t^r
+        for t in range(1, params.T + 1):
+            g_var = model.getVarByName(f"g_{t}")
+            h_var = model.getVarByName(f"h_{t}")
+            g_vals[t] = g_var.X if g_var else 0.0
+            h_vals[t] = h_var.X if h_var else 0.0
+        
+        # 提取 v_tb^r 和 w_tb^r
+        for t in range(1, params.T + 1):
+            v_vals[t] = {}
+            w_vals[t] = {}
+            for b in range(1, params.B + 1):
+                v_var = model.getVarByName(f"v_{t}_{b}")
+                w_var = model.getVarByName(f"w_{t}_{b}")
+                v_vals[t][b] = v_var.X if v_var else 0.0
+                w_vals[t][b] = w_var.X if w_var else 0.0
+        
+        # 计算 Σd̄_l u_l^r
+        term1 = sum(params.d_bar_l[l] * u_vals[l] for l in range(1, params.L + 1))
+        
+        # 计算 Σd̂_l u_l^r z_l^r
+        term2 = sum(params.d_hat_l[l] * u_vals[l] * z_vals[l] for l in range(1, params.L + 1))
+        
+        # 计算 Σx_tb q_l g_t^r (注意: xtb 是第 r 轮的解)
+        term3 = sum(xtb[t][b] * params.q_t[t] * g_vals[t] 
+                    for t in range(1, params.T + 1) 
+                    for b in range(1, params.B + 1))
+        
+        # 计算 - Σx_tb Q_l h_t^r
+        term4 = -sum(xtb[t][b] * params.Q_t[t] * h_vals[t] 
+                     for t in range(1, params.T + 1) 
+                     for b in range(1, params.B + 1))
+        
+        # 计算 + ΣLB_tb x_tb^r v_tb^r
+        term5 = sum(params.LB_tb[t][b] * xtb[t][b] * v_vals[t][b] 
+                    for t in range(1, params.T + 1) 
+                    for b in range(1, params.B + 1))
+        
+        # 计算 - ΣUB_tb x_tb^r w_tb^r
+        term6 = -sum(params.UB_tb[t][b] * xtb[t][b] * w_vals[t][b] 
+                     for t in range(1, params.T + 1) 
+                     for b in range(1, params.B + 1))
+        
+        # 根据公式计算 RP 的目标函数值
+        rp_obj_val = term1 + term2 + term3 + term4 + term5 + term6
         
         # 更新上界：取当前UB和RP目标函数值的较小值
         params.UB = min(params.UB, rp_obj_val)
         
-        print(f"第{r}轮迭代 - RP目标函数值: {rp_obj_val:.4f}, 当前UB: {params.UB:.4f}")
+        print(f"第{r}轮迭代 - UB公式计算:")
+        print(f"  项1(Σd̄_l u_l^r): {term1:.4f}")
+        print(f"  项2(Σd̂_l u_l^r z_l^r): {term2:.4f}")
+        print(f"  项3(Σx_tb q_l g_t^r): {term3:.4f}")
+        print(f"  项4(-Σx_tb Q_l h_t^r): {term4:.4f}")
+        print(f"  项5(+ΣLB_tb x_tb^r v_tb^r): {term5:.4f}")
+        print(f"  项6(-ΣUB_tb x_tb^r w_tb^r): {term6:.4f}")
+        print(f"  RP目标函数值: {rp_obj_val:.4f}, 当前UB: {params.UB:.4f}")
         
         # 提取对偶变量并存储到 dual_vars[r]
         # 注意：这里存储的是第 r 轮的对偶变量，供下一轮 MP 使用

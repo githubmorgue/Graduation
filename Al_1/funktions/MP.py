@@ -80,7 +80,7 @@ def solve_mp_model(r, params, dual_vars):
 
         # 求和部分 1: sum_{l∈L} d_l * u_l^i
         for l in range(1, params.L + 1):
-            expr += params.d_l[l] * u[l]
+            expr += params.d_bar_l[l] * u[l]
 
         # 求和部分 2: sum_{l∈L} d_hat_l * u_l^i * z_l^i
         for l in range(1, params.L + 1):

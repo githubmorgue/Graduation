@@ -2,14 +2,6 @@
 
 ~~~
 ~\Graduation\
-├── .idea/                          # PyCharm IDE 配置文件
-│   ├── inspectionProfiles/
-│   ├── .gitignore
-│   ├── Graduation.iml
-│   ├── material_theme_project_new.xml
-│   ├── misc.xml
-│   ├── modules.xml
-│   └── workspace.xml
 │
 ├── Al_1/                           # 主算法模块（基础版本）
 │   ├── funktions/                  # 算法各阶段函数

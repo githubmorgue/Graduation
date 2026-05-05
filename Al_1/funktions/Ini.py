@@ -109,15 +109,10 @@ def initialize_coverage_matrix(params: Params, density: float = 0.235) -> Params
     return params
 
 
-def initialize_dual_variables(params: Params, r: int = 1) -> DualVars:
+def initialize_dual_variables(params: Params) -> DualVars:
     """
     初始化对偶变量
     """
-    # 确保轮数为1
-    if r != 1:
-        print("警告: 文档要求初始化轮数 r 必须为 1。强制设置为 1。")
-        r = 1
-
     T = params.T
     B = params.B
     L = params.L
@@ -125,29 +120,29 @@ def initialize_dual_variables(params: Params, r: int = 1) -> DualVars:
     # 3.2 生成参数: 所有变量在第1轮初始化为 0
     dual_vars = DualVars()
 
-    # 初始化第 r 轮的变量
-    dual_vars.u[r-1] = {}
-    dual_vars.v[r-1] = {}
-    dual_vars.w[r-1] = {}
-    dual_vars.g[r-1] = {}
-    dual_vars.h[r-1] = {}
-    dual_vars.z[r-1] = {}
+    # 初始化对偶变量
+    dual_vars.u[0] = {}
+    dual_vars.v[0] = {}
+    dual_vars.w[0] = {}
+    dual_vars.g[0] = {}
+    dual_vars.h[0] = {}
+    dual_vars.z[0] = {}
 
     for l in range(1, L + 1):
         # 使用字典存储每个车道l的变量值
-        dual_vars.u[r-1][l] = 0
-        dual_vars.z[r-1][l] = 0
+        dual_vars.u[0][l] = 0
+        dual_vars.z[0][l] = 0
 
     for t in range(1, T + 1):
-        dual_vars.g[r-1][t] = 0
-        dual_vars.h[r-1][t] = 0
+        dual_vars.g[0][t] = 0
+        dual_vars.h[0][t] = 0
 
     for t in range(1, T + 1):
-        dual_vars.w[r-1][t] = {}
-        dual_vars.v[r-1][t] = {}
+        dual_vars.w[0][t] = {}
+        dual_vars.v[0][t] = {}
         for b in range(1, B + 1):
-            dual_vars.w[r-1][t][b] = 0
-            dual_vars.v[r-1][t][b] = 0
+            dual_vars.w[0][t][b] = 0
+            dual_vars.v[0][t][b] = 0
 
     return dual_vars
 

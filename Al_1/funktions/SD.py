@@ -79,10 +79,6 @@ def Step_1(r, params, dual_vars):
                 else:
                     params.x_tb_r[r][t][b] = 0
         
-        # 将当前轮次的selected_vars存入集合D_r
-        params.D_r[r] = selected_vars.copy()
-        print(f"第{r}轮迭代 - D_r已更新，包含 {len(selected_vars)} 个选中的变量")
-        
         # 更新下界
         params.LB = A_value
         # params.LB = max(params.LB, A_value)

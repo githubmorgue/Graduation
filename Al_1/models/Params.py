@@ -34,4 +34,3 @@ class Params:
     LB: float = float('-inf')
     UB: float = float('inf')
     x_tb_r: Dict[int, Dict[int, Dict[int, int]]] = field(default_factory=dict)  # 每轮迭代的主问题解 x_tb_r[r][t][b]，值为0或1
-    D_r: Dict[int, List[Tuple[int, int]]] = field(default_factory=dict)  # 每轮迭代MP求得的解集合 D_r[r] = [(t1,b1), (t2,b2), ...]

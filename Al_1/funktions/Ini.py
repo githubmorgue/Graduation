@@ -167,8 +167,5 @@ def initialize_decision_variables(params: Params) -> Params:
         for b in range(1, B + 1):
             params.x_tb_r[1][t][b] = 0
     
-    # 初始化第1轮的 D_r[1] 为空列表
-    params.D_r[1] = []
-    
     return params
 

@@ -1,5 +1,9 @@
+from typing import List, Tuple
+
 from gurobipy import Model, GRB, quicksum
 import math
+
+from ..models import Params
 from ..models.Params import SolutionInfo
 
 
@@ -182,8 +186,8 @@ def solve_mp_model(r, params, dual_vars):
         model.addConstr(A <= UB_prev, f"UpperBound_r{r}")
 
     # 设置求解参数以收集多个可行解
-    # model.setParam('PoolSearchMode', 2)  # 寻找多个最优解模式
-    # model.setParam('PoolSolutions', 100)  # 最多保存100个解
+    model.setParam('PoolSearchMode', 2)  # 寻找多个最优解模式
+    model.setParam('PoolSolutions', 100)  # 最多保存100个解
     # model.setParam('MIPGap', 0)  # 要求找到最优解
     
     # 求解模型
@@ -229,50 +233,164 @@ def solve_mp_model(r, params, dual_vars):
         
         if is_duplicate or not selected_vars:
             continue
-        
-        # 验证该解是否满足所有历史约束(公式19的所有Benders割平面)
-        satisfies_all_constraints = True
-        for i in range(0, r+1):
-            for k in range(0, params.K_r[i] + 1):
-                u = dual_vars.u[i][k]
-                v = dual_vars.v[i][k]
-                g = dual_vars.g[i][k]
-                h = dual_vars.h[i][k]
-                z = dual_vars.z[i][k]
-                w = dual_vars.w[i][k]
 
-                # 计算约束右侧表达式
-                rhs = 0
-
-                # 求和部分 1: sum_{l∈L} d_bar_l * u_l^{ik}
-                for l in range(1, params.L + 1):
-                    rhs += params.d_bar_l[l] * u[l]
-
-                # 求和部分 2: sum_{l∈L} d_hat_l * u_l^{ik} * z_l^{ik}
-                for l in range(1, params.L + 1):
-                    rhs += params.d_hat_l[l] * u[l] * z[l]
-
-                # 求和部分 3-6: 涉及 x_tb 的项
-                for t in range(1, params.T + 1):
-                    for b in range(1, params.B + 1):
-                        rhs += x_values[(t, b)] * params.q_t[t] * g[t]
-                        rhs -= x_values[(t, b)] * params.Q_t[t] * h[t]
-                        rhs += params.LB_tb[t][b] * x_values[(t, b)] * v[t][b]
-                        rhs -= params.UB_tb[t][b] * x_values[(t, b)] * w[t][b]
-
-                # 检查 A >= rhs 是否成立
-                if obj_value < rhs - 1e-6:  # 允许小的数值误差
-                    satisfies_all_constraints = False
-                    print(f"  ✗ 解#{len(all_solutions)+1}: 不满足约束 i={i}, k={k} (obj={obj_value:.4f} < rhs={rhs:.4f})")
-                    break
-            
-            if not satisfies_all_constraints:
-                break
-        
-        if satisfies_all_constraints:
-            all_solutions.append(SolutionInfo(obj_value=obj_value, x_vars=selected_vars))
-            print(f"  ✓ 解#{len(all_solutions)}: obj={obj_value:.4f}, vars={len(selected_vars)}个, 满足所有约束")
+        # 直接添加到结果列表
+        all_solutions.append(SolutionInfo(obj_value=obj_value, x_vars=selected_vars))
+        print(f"  ✓ 解#{len(all_solutions)}: obj={obj_value:.4f}, vars={len(selected_vars)}个")
 
     print(f"主问题共收集到 {len(all_solutions)} 个满足最终约束的可行解")
     
+    # 【建议】显式释放模型内存
+    model.dispose()
+    
     return all_solutions
+
+
+def solve_restricted_mp(r: int, params: Params, dual_vars,
+                        neighborhood_constraints: List[Tuple[int, int]]) -> List[Tuple[int, int]]:
+    """
+    求解限制主问题 W^r(Γ) 在邻域 N(x^r) 中的最优解 x̄^{r*}
+
+    算法逻辑：
+    - 邻域定义：N(x^r) = {x : ∀(t,b) ∈ neighborhood_constraints, x_{tb} = 1}
+    - 只对 neighborhood_constraints 中的 (t,b) 对添加固定约束 x_{tb} = 1
+    - 这些是随机修改前后值保持为1的变量，构成邻域约束
+    - 其他变量自由优化
+    - 求解得到限制主问题的最优解 x̄^{r*}
+
+    Args:
+        r: 当前迭代轮次
+        params: 模型参数对象
+        dual_vars: 对偶变量对象
+        neighborhood_constraints: 邻域约束集合，包含修改前后值保持为1的(t,b)对列表 N(x^r)
+
+    Returns:
+        ls_solution: 限制主问题的最优解 x̄^{r*}，格式为 [(t1,b1), (t2,b2), ...]
+    """
+    # 创建模型
+    model = Model("Restricted_MP_Model")
+    model.setParam('OutputFlag', 0)  # 关闭Gurobi输出
+
+    # 创建变量
+    # A >= 0
+    A = model.addVar(lb=0, vtype=GRB.CONTINUOUS, name="A")
+
+    # x_tb 是二元变量
+    x = {}
+    for t in range(1, params.T + 1):
+        for b in range(1, params.B + 1):
+            x[t, b] = model.addVar(vtype=GRB.BINARY, name=f"x_{t}_{b}")
+
+    # 设置目标函数
+    model.setObjective(A, GRB.MINIMIZE)
+
+    # 添加约束
+
+    # 约束类型 1 - Benders割平面约束
+    # 对于每一轮 i = 0 ... r，遍历该轮的所有对偶变量 k = 0 ... K^i
+    constraint_idx = 0
+
+    for i in range(0, r + 1):
+        # 确保 K_r[i] 已计算
+        if i not in params.K_r:
+            if i == 0:
+                params.K_r[i] = 0
+            else:
+                D_size = len(params.D_r.get(i - 1, []))
+                X_LS_size = len(params.X_r_LS.get(i - 1, []))
+                params.K_r[i] = D_size + X_LS_size - 1
+
+        for k in range(0, params.K_r[i] + 1):
+            u = dual_vars.u[i][k]
+            v = dual_vars.v[i][k]
+            g = dual_vars.g[i][k]
+            h = dual_vars.h[i][k]
+            zl = dual_vars.z[i][k]
+            w = dual_vars.w[i][k]
+
+            # 构建右侧表达式 (RHS)
+            expr = 0
+
+            # 求和部分 1: sum_{l∈L} d_bar_l * u_l^{ik}
+            for l in range(1, params.L + 1):
+                expr += params.d_bar_l[l] * u[l]
+
+            # 求和部分 2: sum_{l∈L} d_hat_l * u_l^{ik} * z_l^{ik}
+            for l in range(1, params.L + 1):
+                expr += params.d_hat_l[l] * u[l] * zl[l]
+
+            # 求和部分 3: sum_{t∈T} sum_{b∈B_t} x_tb * q_t * g_t^{ik}
+            for t in range(1, params.T + 1):
+                for b in range(1, params.B + 1):
+                    expr += x[t, b] * params.q_t[t] * g[t]
+
+            # 求和部分 4: - sum_{t∈T} sum_{b∈B_t} x_tb * Q_t * h_t^{ik}
+            for t in range(1, params.T + 1):
+                for b in range(1, params.B + 1):
+                    expr -= x[t, b] * params.Q_t[t] * h[t]
+
+            # 求和部分 5: + sum_{t∈T} sum_{b∈B_t} LV_tb * x_tb * v_tb^{ik}
+            for t in range(1, params.T + 1):
+                for b in range(1, params.B + 1):
+                    expr += params.LB_tb[t][b] * x[t, b] * v[t][b]
+
+            # 求和部分 6: - sum_{t∈T} sum_{b∈B_t} UV_tb * x_tb * w_tb^{ik}
+            for t in range(1, params.T + 1):
+                for b in range(1, params.B + 1):
+                    expr -= params.UB_tb[t][b] * x[t, b] * w[t][b]
+
+            # 添加约束: A >= expr
+            model.addConstr(A >= expr, name=f"Type1_i{i}_k{k}")
+            constraint_idx += 1
+
+    # 约束类型 2: sum_{b in B_t} x_tb <= 1, for t in T
+    for t in range(1, params.T + 1):
+        model.addConstr(quicksum(x[t, b] for b in range(1, params.B + 1)) <= 1, name=f"Type2_Time_{t}")
+
+    # 约束类型 3: sum_{t in T} sum_{b in B_t} a_{tb}^l x_tb <= 1, for l in L
+    for l in range(1, params.L + 1):
+        line_expr = 0
+        for t in range(1, params.T + 1):
+            for b in range(1, params.B + 1):
+                if params.a_tb_l.get(t, {}).get(b, {}).get(l, 0) == 1:
+                    line_expr += x[t, b]
+        model.addConstr(line_expr <= 1, name=f"Type3_Line_{l}")
+
+    # 约束类型 4: N_min <= sum_{t in T} sum_{b in B_t} x_tb <= N_max
+    total_x = quicksum(x[t, b] for t in range(1, params.T + 1) for b in range(1, params.B + 1))
+    model.addConstr(total_x >= params.N_min, "MinCount")
+    model.addConstr(total_x <= params.N_max, "MaxCount")
+
+    # 边界约束
+    model.addConstr(A >= params.LB, "LowerBound")
+    model.addConstr(A <= params.UB, "UpperBound")
+
+    # 邻域约束：N(x^r) = {x : ∀(t,b) ∈ neighborhood_constraints, x_{tb} = 1}
+    # 只对邻域约束集合中的 (t,b) 对添加固定约束 x_{tb} = 1
+    # 这些变量在随机修改前后值保持为1，构成局部搜索的邻域定义
+    if neighborhood_constraints:
+        print(f"LS: 在邻域N(x^r)上求解，包含 {len(neighborhood_constraints)} 个固定约束")
+        for t, b in neighborhood_constraints:
+            model.addConstr(x[t, b] == 1, name=f"Neighborhood_x_{t}_{b}")
+            print(f"LS: 邻域约束 - 固定 x_{t}_{b} = 1")
+    else:
+        print(f"LS: 邻域N(x^r)为空，无固定约束（所有变量自由优化）")
+
+    # 优化模型
+    model.optimize()
+
+    # 提取最优解
+    ls_solution = []
+    if model.status == GRB.OPTIMAL:
+        for t in range(1, params.T + 1):
+            for b in range(1, params.B + 1):
+                if x[t, b].X > 0.5:  # 如果变量值为1
+                    ls_solution.append((t, b))
+
+        obj_value = model.objVal
+        print(f"LS: 限制主问题求解成功，目标值={obj_value:.4f}，解包含{len(ls_solution)}个(t,b)对")
+    else:
+        print(f"LS: 警告 - 限制主问题未找到最优解，状态码={model.status}")
+
+    model.dispose()
+    return ls_solution

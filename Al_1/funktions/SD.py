@@ -17,39 +17,56 @@ def Step_0(L, T, B, r):
     """
     步骤0：初始化 Benders 分解算法所需的问题参数和对偶变量。
 
+    该函数负责调用初始化模块，生成算法运行所需的所有基础数据，包括：
+    1. 基础约束参数（承运商数量、中标上下限等）
+    2. 函数参数（需求、报价、覆盖矩阵等）
+    3. 对偶变量空间（用于存储历史割平面信息）
+
     Args:
-        L (int): 车道数量
-        T (int): 承运商数量
-        B (int): 投标数量
-        r (int): 当前迭代次数
+        L (int): 线路 (Lane) 数量
+        T (int): 承运商 (Carrier) 数量
+        B (int): 每个承运商的投标 (Bid) 数量
+        r (int): 当前迭代次数（用于初始化逻辑）
 
     Returns:
-        tuple: 包含初始化后的参数字典 (params) 和对偶变量字典 (dual_vars)
+        tuple: 包含初始化后的参数对象 (params) 和对偶变量对象 (dual_vars)
     """
-    # 1. 初始化约束参数
+    # 1. 初始化约束参数（包含 L, T, B, alpha, p_t, q_t, Q_t, N_min, N_max 等）
     params = initialize_constraints_params(L, T, B)
-    # 2. 初始化函数参数
+    
+    # 2. 初始化函数参数（包含 d_bar_l, d_hat_l, LB_tb, UB_tb, c_tb, ce_l 等）
     params = initialize_function_params(params)
     # 2.5. 初始化覆盖矩阵
     density = random.uniform(0.22, 0.25)  # 密度在 22% 到 25% 之间
     params = initialize_coverage_matrix(params, density=round(density, 4))
-    # 3. 初始化对偶变量
+    
+    # 3. 初始化对偶变量空间（为第 0 轮分配 u, v, w, g, h, z 的存储结构）
     dual_vars = initialize_dual_variables(params)
-    # 4. 初始化决策变量 x_tb_r（第1轮设为0）
+    
+    # 4. 初始化决策变量 x_tb_r（Al_1 版本中通常由 MP 直接初始化）
     # params = initialize_decision_variables(params)
 
     return params, dual_vars
 
+
 def Step_1(r, params, dual_vars):
     """
-    步骤1：求解主问题。
+    步骤1：求解主问题 (Master Problem)。
+
+    调用 solve_mp_model 构建并求解当前轮次 r 的主问题。
+    主要功能包括：
+    1. 提取最优目标值 A^r 并更新全局下界 LB。
+    2. 提取决策变量 x_{tb} 的最优解并存储到 params.x_tb_r[r] 中。
+
     Args:
         r (int): 当前迭代次数
-        params (Params): 模型参数
-        dual_vars (DualVars): 对偶变量
+        params (Params): 模型参数对象
+        dual_vars (DualVars): 对偶变量对象
+
     Returns:
-        tuple: (A_value, selected_vars) - 目标函数值、选中的变量列表
+        tuple: (A_value, selected_vars) - 目标函数值 A^r、选中的变量列表 (t, b)
     """
+    # 调用 MP 模块求解主问题
     model = solve_mp_model(r, params, dual_vars)
     
     # 存储选中的变量 (t, b) 对
@@ -58,6 +75,7 @@ def Step_1(r, params, dual_vars):
     A_value = None
 
     if model.status == GRB.OPTIMAL:
+        # 提取主问题目标变量 A 的值
         A_var = model.getVarByName("A")
         A_value = A_var.X
         print(f"找到最优解！目标函数 A = {A_value}")
@@ -71,6 +89,7 @@ def Step_1(r, params, dual_vars):
             for b in range(1, params.B + 1):
                 x_var = model.getVarByName(f"x_{t}_{b}")
                 if x_var:
+                    # 将浮点解转换为整数 (0 或 1)
                     x_value = int(round(x_var.X))
                     params.x_tb_r[r][t][b] = x_value
                     if x_value == 1:
@@ -79,7 +98,7 @@ def Step_1(r, params, dual_vars):
                 else:
                     params.x_tb_r[r][t][b] = 0
         
-        # 更新下界
+        # 更新下界 LB = max(LB, A^r)
         params.LB = A_value
         # params.LB = max(params.LB, A_value)
         params.A_r = A_value
@@ -94,9 +113,21 @@ def Step_1(r, params, dual_vars):
 
 def Step_2(r, gamma, params, dual_vars):
     """
-    步骤2：求解补救问题，并提取对偶变量。
+    步骤2：求解鲁棒子问题 (Robust Problem) 并提取对偶变量。
+
+    基于 Step_1 得到的最优解 x^r，求解补救问题 (Recourse Problem) 以评估该解在最坏情况下的表现。
+    主要功能包括：
+    1. 计算补救问题的目标函数值并更新全局上界 UB。
+    2. 提取所有对偶变量 (u, v, w, g, h, z) 并存储到 dual_vars[r]，用于下一轮主问题生成割平面。
+
+    Args:
+        r (int): 当前迭代次数
+        gamma (int): 不确定性预算参数 Γ
+        params (Params): 模型参数对象
+        dual_vars (DualVars): 对偶变量对象
+
     Returns:
-        model: Gurobi 模型对象
+        model: 求解完成的 Gurobi 模型对象
     """
     try:
         # 从 params 中获取第 r 轮的 x_tb 解
@@ -107,12 +138,13 @@ def Step_2(r, gamma, params, dual_vars):
         xtb = params.x_tb_r[r]
         print(f"Step_2: xtb = {xtb}")
         
+        # 调用 RP 模块求解鲁棒子问题
         model = solve_rp_model(r, gamma, xtb, params)
         
         if model.status != GRB.OPTIMAL:
             raise Exception(f"RP模型在第{r}轮未找到最优解，状态码: {model.status}")
 
-        # 根据算法图片 Step 2 的公式计算 UB
+        # 根据算法公式计算 UB 更新值
         # UB ← min{UB, Σd̄_l u_l^r + Σd̂_l u_l^r z_l^r + Σx_tb q_l g_t^r - Σx_tb Q_l h_t^r 
         #          + ΣLB_tb x_tb^r v_tb^r - ΣUB_tb x_tb^r w_tb^r}
         
@@ -151,28 +183,28 @@ def Step_2(r, gamma, params, dual_vars):
                 v_vals[t][b] = v_var.X if v_var else 0.0
                 w_vals[t][b] = w_var.X if w_var else 0.0
         
-        # 计算 Σd̄_l u_l^r
+        # 计算 Σd̄_l u_l^r (名义需求项)
         term1 = sum(params.d_bar_l[l] * u_vals[l] for l in range(1, params.L + 1))
         
-        # 计算 Σd̂_l u_l^r z_l^r
+        # 计算 Σd̂_l u_l^r z_l^r (偏差需求项)
         term2 = sum(params.d_hat_l[l] * u_vals[l] * z_vals[l] for l in range(1, params.L + 1))
         
-        # 计算 Σx_tb q_l g_t^r (注意: xtb 是第 r 轮的解)
+        # 计算 Σx_tb q_l g_t^r (运输量下限项)
         term3 = sum(xtb[t][b] * params.q_t[t] * g_vals[t] 
                     for t in range(1, params.T + 1) 
                     for b in range(1, params.B + 1))
         
-        # 计算 - Σx_tb Q_l h_t^r
+        # 计算 - Σx_tb Q_l h_t^r (运输量上限项)
         term4 = -sum(xtb[t][b] * params.Q_t[t] * h_vals[t] 
                      for t in range(1, params.T + 1) 
                      for b in range(1, params.B + 1))
         
-        # 计算 + ΣLB_tb x_tb^r v_tb^r
+        # 计算 + ΣLB_tb x_tb^r v_tb^r (投标下限项)
         term5 = sum(params.LB_tb[t][b] * xtb[t][b] * v_vals[t][b] 
                     for t in range(1, params.T + 1) 
                     for b in range(1, params.B + 1))
         
-        # 计算 - ΣUB_tb x_tb^r w_tb^r
+        # 计算 - ΣUB_tb x_tb^r w_tb^r (投标上限项)
         term6 = -sum(params.UB_tb[t][b] * xtb[t][b] * w_vals[t][b] 
                      for t in range(1, params.T + 1) 
                      for b in range(1, params.B + 1))
@@ -184,7 +216,7 @@ def Step_2(r, gamma, params, dual_vars):
         params.UB = min(params.UB, rp_obj_val)
         
         print(f"第{r}轮迭代 - UB公式计算:")
-        print(f"  项1(Σd̄_l u_l^r): {term1:.4f}")
+        print(f"  项1(Σd_l u_l^r): {term1:.4f}")
         print(f"  项2(Σd̂_l u_l^r z_l^r): {term2:.4f}")
         print(f"  项3(Σx_tb q_l g_t^r): {term3:.4f}")
         print(f"  项4(-Σx_tb Q_l h_t^r): {term4:.4f}")
@@ -204,7 +236,7 @@ def Step_2(r, gamma, params, dual_vars):
         dual_vars.h[iteration_idx] = {}
         dual_vars.z[iteration_idx] = {}
         
-        # 提取 u_l 的值（u_l 是变量，直接获取变量值）
+        # 提取 u_l 的值
         for l in range(1, params.L + 1):
             u_var = model.getVarByName(f"u_{l}")
             if u_var:

@@ -72,8 +72,8 @@
    - 调用 `GC.py` 生成 Benders 割
 
 #### 核心模块
-- **MP.py**: Master Problem - 主问题模型
-- **RP.py**: Robust Problem - 鲁棒优化子问题
+- **MP.py**: Master Problem - 主问题模型，负责求解辅助变量 A 和决策变量 x_tb
+- **RP.py**: Robust Problem - 鲁棒优化子问题，负责评估最坏情况并提取对偶变量生成割平面
 - **Ini.py**: Initialization - 各类参数和变量的初始化
 - **Params.py**: 模型参数的数据类定义
 - **DualVars.py**: 对偶变量的数据类定义
@@ -100,13 +100,12 @@
 
 3. **Step_2** - 求解主问题（Master Problem）
    - 调用 `MP.py` 中的 `solve_mp_model`
-   - 通过分支定界收集所有可行解到D^r
-   - **关键功能**: 验证每个解是否满足所有历史Benders割平面约束
-   - 按目标值降序排列D^r，最后一个元素为最优解x^r
+   - **关键特性**: 开启 Gurobi 解池模式，收集分支定界过程中的所有中间可行解
+   - 按目标值降序排列 D^r，最后一个元素为最优解 x^r
    - 更新下界 LB^r = A^r
    - 返回: A_value, selected_vars
 
-4. **Step_3** - 求解最优解x^r的补救问题
+4. **Step_3** - 求解最优解 x^r 的补救问题
    - 调用 `RP.py` 中的 `solve_rp_model`
    - 提取对偶变量到dual_vars[r+1][0]
    - 更新上界 UB^r ← min{UB^{r-1}, Θ^r}
@@ -131,10 +130,11 @@
 #### MP.py - 主问题求解（Master Problem）
 - **核心功能**: 
   - 构建并求解主问题 W^r(Γ)
-  - 动态计算K^r = |D^{r-1}| + |X^{r-1,LS}| - 1
-  - 添加Benders割平面约束（公式19）
-  - **关键特性**: 收集分支定界过程中的所有可行解，并验证其满足最终约束
-  - 按目标值降序返回所有可行解（最后一个是最优解x^r）
+  - 动态计算 K^r = |D^{r-1}| + |X^{r-1,LS}| - 1
+  - 添加 Benders 割平面约束（公式 19）
+  - **关键特性**: 开启 Gurobi 的 `PoolSearchMode=2` 收集分支定界过程中的所有中间可行解
+  - 利用 `model.PoolObjVal` 和 `x_var.Xn` 提取解池中的所有解
+  - 包含 `solve_restricted_mp` 函数：求解带邻域约束（固定变量值）的限制主问题
 
 #### RP.py - 鲁棒子问题求解（Robust Problem）
 - **两个求解函数**:
@@ -155,29 +155,28 @@
   - `update_pool_1()`: 基于D^r更新记忆池（FIFO原则）
   - `local_search()`: 
     - 构造频率向量 alpha_freq[t][b][r] = sum_{x∈D_r_mem} x_tb
-    - 计算phi^r = |D_r[r]| / 2
-    - 生成NB_LS个随机子集B_tilde_r[r]
-    - 根据阈值α/NB_mem设置邻域约束x̄^r
-    - 求解限制主问题得到LS最优解
-  - `update_pool_2()`: 基于X^{r,LS}再次更新记忆池
-  - `solve_restricted_mp()`: 求解限制主问题（在邻域N(x^r)中）
+    - 计算 phi^r = (sum_{t∈T} sum_{b∈B_t} x_{tb}^r) / 2
+    - 随机选择 B̃^r 并根据阈值 α/NB_mem 修改变量得到 x̄^r
+    - 收集修改前后值不变的 (t,b) 对作为邻域约束 N(x^r)
+    - 调用 `MP.solve_restricted_mp` 在受限集上求解得到 LS 最优解
+  - `update_pool_2()`: 基于 X^{r,LS} 再次更新记忆池
 
 #### Ini.py - 初始化模块
 - **5个初始化函数**:
-  - `initialize_constraints_params()`: 初始化L, T, B, alpha_param, p_t, q_t, Q_t, N_min, N_max
-  - `initialize_function_params()`: 初始化d_bar_l, d_hat_l, LB_tb, UB_tb, c_tb, ce_l, M
-  - `initialize_coverage_matrix()`: 随机生成覆盖矩阵a_tb_l（密度22%~25%）
-  - `initialize_dual_variables()`: 初始化对偶变量空间dual_vars[0]
-  - `initialize_decision_variables()`: 初始化D_r[0], X_r_LS[0], LB_history, UB_history
+  - `initialize_constraints_params()`: 初始化 L, T, B, alpha_param, p_t, q_t, Q_t, N_min, N_max
+  - `initialize_function_params()`: 初始化 d_bar_l, d_hat_l, LB_tb, UB_tb, c_tb, ce_l, M
+  - `initialize_coverage_matrix()`: 随机生成覆盖矩阵 a_tb_l（密度 22%~25%）
+  - `initialize_dual_variables()`: 初始化对偶变量空间 dual_vars[0]
+  - `initialize_decision_variables()`: 初始化 D_r[0], X_r_LS[0], LB_history, UB_history
 
 ### 数据模型
 
 #### Params.py
-- **SolutionInfo类**: 存储解的信息
+- **SolutionInfo 类**: 存储解的信息
   - obj_value: 目标函数值
   - x_vars: 决策变量列表 [(t1,b1), (t2,b2), ...]
   
-- **Params类**: 包含所有模型参数
+- **Params 类**: 包含所有模型参数
   - 基础维度: T, L, B
   - 约束参数: alpha_param, z_l, p_t, q_t, Q_t, N_min, N_max
   - 函数参数: d_bar_l, d_hat_l, d_l, LB_tb, UB_tb, c_tb, ce_l, M, a_tb_l
@@ -185,7 +184,7 @@
   - 解集合: D_r, K_r, NB_mem, D_r_mem, alpha_freq, phi_r, B_tilde_r, NB_LS, X_r_LS, N_x_r
 
 #### DualVars.py
-- **DualVars类**: 存储对偶变量
+- **DualVars 类**: 存储对偶变量
   - u[r][k][l]: 对应名义需求的对偶变量
   - v[r][k][t][b], w[r][k][t][b]: 对应运输量上下限的对偶变量
   - g[r][k][t], h[r][k][t]: 对应承运商运输量约束的对偶变量

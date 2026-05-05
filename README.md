@@ -50,56 +50,53 @@
 ### Al_1 核心模块详解
 
 #### 启动类
-- **main.py**: 程序入口，控制整体迭代流程
+- **main.py**: 程序入口，控制整体迭代流程和批量实验
+  - `run_single_instance()`: 运行单个实例的Benders分解算法
+  - `write_results_to_csv()`: 将结果实时写入CSV文件
+  - `main()`: 批量实验控制，遍历不同实例集和Gamma比例
 
-#### SD.py - 算法各阶段总接口
+#### SD.py - 算法各阶段总接口（3个步骤）
 1. **Step_0** - 初始化阶段
    - 调用 `Ini.py` 中的初始化函数
    - 初始化约束参数、函数参数、覆盖矩阵
    - 初始化对偶变量和决策变量
+   - 返回: params, dual_vars
 
-2. **Step_1** - 求解主问题
+2. **Step_1** - 求解主问题（Master Problem）
    - 调用 `MP.py` 中的 `solve_mp_model`
-   - 更新下界 LB
-   - 提取并存储 x_tb 的解
+   - 更新下界 LB^r = A^r
+   - 提取并存储 x_tb 的解到 selected_vars
+   - 返回: A_value, selected_vars
 
-3. **Step_2** - 求解鲁棒子问题
+3. **Step_2** - 求解鲁棒子问题（Robust Problem）
    - 调用 `RP.py` 中的 `solve_rp_model`
-   - 更新上界 UB
-   - 提取对偶变量供下一轮迭代使用
+   - 提取对偶变量到 dual_vars[r]
+   - 更新上界 UB^r ← min{UB^{r-1}, Θ^r}
+   - 检查终止条件：若 UB^r == LB^r 则算法收敛
+   - 返回: model
 
-4. **Step_3** - 生成约束（待实现）
-   - 调用 `GC.py` 生成 Benders 割
-
-#### 核心模块
-- **MP.py**: Master Problem - 主问题模型
-  - 目标函数：min A
-  - 约束类型：Benders 割平面、承运商选择约束、车道容量约束、中标数量约束
+#### MP.py - 主问题求解（Master Problem）
+- **核心功能**: 
+  - 构建并求解主问题 W^r(Γ)
+  - 添加 Benders 割平面约束
+  - 包含承运商选择约束、车道容量约束、中标数量约束
   - 输出：最优目标值 A 和决策变量 x_tb
 
-- **RP.py**: Robust Problem - 鲁棒优化子问题
+#### RP.py - 鲁棒子问题求解（Robust Problem）
+- **核心函数**:
+  - `solve_rp_model()`: z_l是二元决策变量
+- **数学模型**: 对偶形式的鲁棒优化问题
   - 目标函数：最大化最坏情况下的成本（对偶形式）
   - 约束类型：对偶可行性、不确定性预算约束 (sum z_l ≤ Γ)、Slack 变量约束
-  - 输出：最坏情况目标值和对偶变量
+- **输出**: Gurobi模型对象，可提取对偶变量 u, v, w, g, h, z
 
-- **Ini.py**: Initialization - 初始化模块
-  - `initialize_constraints_params()`: 生成 L, T, B, alpha, p_t, q_t, Q_t, N_min, N_max
-  - `initialize_function_params()`: 生成 d_bar_l, d_hat_l, LB_tb, UB_tb, c_tb, ce_l
-  - `initialize_coverage_matrix()`: 生成稀疏覆盖矩阵 a_tb_l（密度 22%~25%）
-  - `initialize_dual_variables()`: 初始化对偶变量存储结构
+#### Ini.py - 初始化模块
+- **5个初始化函数**:
+  - `initialize_constraints_params()`: 初始化 L, T, B, alpha_param, p_t, q_t, Q_t, N_min, N_max
+  - `initialize_function_params()`: 初始化 d_bar_l, d_hat_l, LB_tb, UB_tb, c_tb, ce_l, M
+  - `initialize_coverage_matrix()`: 随机生成覆盖矩阵 a_tb_l（密度 22%~25%）
+  - `initialize_dual_variables()`: 初始化对偶变量空间 dual_vars[0]
   - `initialize_decision_variables()`: 初始化决策变量存储结构
-
-- **Params.py**: 模型参数的数据类定义
-  - 基础维度: T, L, B
-  - 约束参数: alpha_param, z_l, p_t, q_t, Q_t, N_min, N_max
-  - 函数参数: d_bar_l, d_hat_l, d_l, LB_tb, UB_tb, c_tb, ce_l, M, a_tb_l
-  - 决策变量: A_r, LB, UB, x_tb_r
-
-- **DualVars.py**: 对偶变量的数据类定义
-  - u[l]: 对应名义需求的对偶变量
-  - v[t][b], w[t][b]: 对应投标上下限的对偶变量
-  - g[t], h[t]: 对应承运商运输量约束的对偶变量
-  - z[l]: 对应不确定性预算的二元变量
 
 ### Al_2 核心模块详解
 

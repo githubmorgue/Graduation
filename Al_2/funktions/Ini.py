@@ -76,10 +76,6 @@ def initialize_function_params(params: Params) -> Params:
     返回:
         Params: 填充了完整函数参数的 Params 对象。
     """
-    # 如果传入了之前的参数，则在此基础上更新
-    if not params:
-        params = Params()
-
     # 2.1 确定参数数量
     T = params.T
     L = params.L

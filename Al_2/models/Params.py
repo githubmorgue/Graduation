@@ -50,4 +50,4 @@ class Params:
     B_tilde_r: Dict[int, List[List[Tuple[int, int]]]] = field(default_factory=dict)  # 每轮迭代的LS随机子集集合，B_tilde_r[r] = 包含NB_LS个随机子集的列表，每个子集大小为phi_r[r]
     NB_LS: int = 2  # LS解的数量，人工设定的参数，默认为2
     X_r_LS: Dict[int, List[List[Tuple[int, int]]]] = field(default_factory=dict)  # 每轮迭代的LS解集合 X_r_LS[r] = 包含NB_LS个限制主问题最优解的列表
-    N_x_r: Dict[int, List[Dict[int, Dict[int, int]]]] = field(default_factory=dict)  # 每轮迭代的邻域集合 N_x_r[r] = 包含NB_LS个邻域约束的列表，每个邻域N(x^r)用\bar{x}_{tb}^r表示
+    N_x_r: Dict[int, List[List[Tuple[int, int]]]] = field(default_factory=dict)  # 每轮迭代的邻域约束集合 N_x_r[r] = 包含NB_LS个邻域的列表，每个邻域是满足x_{tb} = x̄^r_{tb}的(t,b)对列表

@@ -200,13 +200,6 @@ def Step_3(r, gamma, params, dual_vars):
         print(f"\n--- Step 3.1: 获取主问题最优解x^r ---")
 
         x_current = params.x_tb_r[r]
-        
-        # 将x_current转换为List[Tuple]格式用于求解RP
-        x_current_list = [(t, b) for t in range(1, params.T + 1) 
-                          for b in range(1, params.B + 1) 
-                          if x_current.get(t, {}).get(b, 0) == 1]
-        
-        print(f"Step_3: x^r包含 {len(x_current_list)} 个选中的(t,b)对")
 
         # ========== 步骤2: 求解补救问题Q(x^r, Γ) ==========
         print(f"\n--- Step 3.2: 求解补救问题 Q(x^r, Γ) ---")
@@ -249,25 +242,19 @@ def Step_3(r, gamma, params, dual_vars):
         # 提取 u_l^{(r+1)0}
         for l in range(1, params.L + 1):
             u_var = rp_model.getVarByName(f"u_{l}")
-            if u_var:
-                dual_vars.u[next_r][0][l] = u_var.X
-            else:
-                dual_vars.u[next_r][0][l] = 0.0
+            dual_vars.u[next_r][0][l] = u_var.X
         
         # 提取 z_l^{(r+1)0}
         for l in range(1, params.L + 1):
             z_var = rp_model.getVarByName(f"z_{l}")
-            if z_var:
-                dual_vars.z[next_r][0][l] = z_var.X
-            else:
-                dual_vars.z[next_r][0][l] = 0.0
+            dual_vars.z[next_r][0][l] = z_var.X
         
         # 提取 g_t^{(r+1)0} 和 h_t^{(r+1)0}
         for t in range(1, params.T + 1):
             g_var = rp_model.getVarByName(f"g_{t}")
             h_var = rp_model.getVarByName(f"h_{t}")
-            dual_vars.g[next_r][0][t] = g_var.X if g_var else 0.0
-            dual_vars.h[next_r][0][t] = h_var.X if h_var else 0.0
+            dual_vars.g[next_r][0][t] = g_var.X
+            dual_vars.h[next_r][0][t] = h_var.X
         
         # 提取 v_{t,b}^{(r+1)0} 和 w_{t,b}^{(r+1)0}
         for t in range(1, params.T + 1):
@@ -276,9 +263,9 @@ def Step_3(r, gamma, params, dual_vars):
             for b in range(1, params.B + 1):
                 v_var = rp_model.getVarByName(f"v_{t}_{b}")
                 w_var = rp_model.getVarByName(f"w_{t}_{b}")
-                dual_vars.v[next_r][0][t][b] = v_var.X if v_var else 0.0
-                dual_vars.w[next_r][0][t][b] = w_var.X if w_var else 0.0
-        
+                dual_vars.v[next_r][0][t][b] = v_var.X
+                dual_vars.w[next_r][0][t][b] = w_var.X
+
         print(f"Step_3: 已提取第0对对偶变量到 dual_vars[{next_r}][0]")
 
         # ========== 步骤4: 更新UB^r ← min{UB^{r-1}, Θ^r} ==========
@@ -411,19 +398,12 @@ def Step_5(r, gamma, params, dual_vars):
         # 获取当前轮的解 x^r（D^r的最后一个元素，因为按降序排列，最小值在最后）
         if r not in params.D_r or len(params.D_r[r]) == 0:
             raise KeyError(f"第{r}轮的 D_r 为空")
-        
-        x_r_solution = params.D_r[r][-1]  # 最后一个元素是最优解x^r
-        x_current_list = x_r_solution.x_vars
-        
-        print(f"Step_5: x^r（最优解）包含 {len(x_current_list)} 个(t,b)对，目标值={x_r_solution.obj_value:.4f}")
-        
+
         # 获取 D^r \ {x^r}（排除最后一个元素）
         D_r_without_current = params.D_r[r][:-1]  # 所有除了最后一个的元素
         
         print(f"Step_5: D^r \\ {{x^r}} 包含 {len(D_r_without_current)} 个解")
-        for idx, sol in enumerate(D_r_without_current):
-            print(f"Step_5:   D^r[{idx}]: obj={sol.obj_value:.4f}, vars={len(sol.x_vars)}个")
-        
+
         # 获取 X^{r,LS}
         X_r_LS = params.X_r_LS.get(r, [])
         print(f"Step_5: X^{{r,LS}} 包含 {len(X_r_LS)} 个解")
@@ -529,10 +509,7 @@ def Step_5(r, gamma, params, dual_vars):
             
             # 获取RP目标函数值
             rp_obj_val = rp_model.ObjVal
-            
-            # 更新UB: UB^r ← min{UB^{r-1}, Θ^r}
-            params.UB = min(params.UB, rp_obj_val)
-            
+
             print(f"Step_5: 候选解k={k} - RP目标值: {rp_obj_val:.4f}, 当前UB: {params.UB:.4f}")
             
             # 提取对偶变量并存储到 dual_vars[next_r][k]（k从1开始）

@@ -12,7 +12,7 @@ matplotlib.rcParams['font.sans-serif'] = ['Microsoft YaHei', 'SimHei', 'KaiTi', 
 matplotlib.rcParams['axes.unicode_minus'] = False
 
 # 方法2: 如果上述字体不可用，使用英文标签（备用方案）
-USE_ENGLISH_LABELS = True  # 设置为 False 使用中文，True 使用英文
+USE_ENGLISH_LABELS = False  # 设置为 False 使用中文，True 使用英文
 
 # --- 依赖导入 (假设项目结构) ---
 # 将 Al_2 模块路径加入系统路径
@@ -22,8 +22,6 @@ if project_root not in sys.path:
 
 from Al_2.funktions.SD import Step_0  # 导入初始化函数
 from Al_2.main2 import run_single_instance  # 从 main2.py 导入单实例运行函数
-from Al_2.models.Params import Params  # 导入参数类以获取实例数据
-from Al_2.models.DualVars import DualVars  # 导入对偶变量类
 
 
 """
@@ -50,7 +48,7 @@ def generate_test_instances():
     print("正在生成测试实例...")
     instances = []
     # 固定问题规模，例如 L=20, T=8, B=20
-    L, T, B = 10, 4, 3
+    L, T, B = 20, 4, 10
 
     # 生成 5 个不同的随机实例用于取平均值，减少随机误差
     for i in range(5):
@@ -74,10 +72,10 @@ def run_gamma_experiment(instances, gamma_values):
     """
     results = {
         'gamma': [],
-        'avg_cost': [],  # 平均总成本 (回答问题1)
-        'avg_spot_rate': [],  # 平均现货市场使用率 (回答问题2)
-        'avg_carriers': [],  # 平均中标承运商数量 (回答问题3)
-        'avg_time': []  # 平均运行时间 (回答问题4)
+        'avg_cost': [],  # 平均总成本
+        'avg_spot_rate': [],  # 平均现货市场使用率
+        'avg_carriers': [],  # 平均中标承运商数量
+        'avg_time': []  # 平均运行时间
     }
 
     total_experiments = len(gamma_values) * len(instances)
@@ -296,8 +294,8 @@ def main():
     # 1. 生成测试数据
     instances = generate_test_instances()
 
-    # 2. 定义 Gamma 测试范围 (0.1 到 0.9，步长 0.2)
-    gamma_values = np.round(np.arange(0.1, 1.0, 0.2), 1)  # [0.1, 0.3, 0.5, 0.7, 0.9]
+    # 2. 定义 Gamma 测试范围 (0.1 到 0.9，步长 0.1)
+    gamma_values = np.round(np.arange(0.1, 1.0, 0.1), 1)
 
     # 3. 运行实验
     print("正在运行实验...")

@@ -24,30 +24,60 @@ def run_single_instance(L, T, B, gamma_value, instance_id):
     
     # 初始化参数
     params, dual_vars = Step_0(L, T, B, 1)
-    max_iterations = 1000
     r = 1
-    
-    while r <= max_iterations:
+
+    max_time_limit = 1200  # 时间限制：1200秒
+    while True:
+        # 检查是否超时
+        current_time = time.time()
+        elapsed_time = current_time - start_time
+
+        if elapsed_time >= max_time_limit:
+            print(f"达到时间限制({max_time_limit}秒)，终止迭代")
+            break
+
         # 步骤1：求解主问题 - 更新下界
         A_value, selected_vars = Step_1(r, params, dual_vars)
-        
+
         if not selected_vars:
             print("主问题未找到可行解，终止迭代")
-            r += 1
             break
-        
+
         # 步骤2：求解子问题 - 更新上界
         model = Step_2(r, gamma_value, params, dual_vars)
-        
+
         # 检查收敛条件
         gap = params.UB - params.LB
-        print(f"第{r}轮 - Gap: {gap:.4f} (UB={params.UB:.4f}, LB={params.LB:.4f})")
-        
+        print(f"第{r}轮 - Gap: {gap:.4f} (UB={params.UB:.4f}, LB={params.LB:.4f}), 耗时: {elapsed_time:.2f}秒")
+
         if gap < 1e-6:
             print(f"算法在第{r}轮收敛")
             break
-        
+
         r += 1
+
+    # max_iterations = 1000
+    # while r <= max_iterations:
+    #     # 步骤1：求解主问题 - 更新下界
+    #     A_value, selected_vars = Step_1(r, params, dual_vars)
+    #
+    #     if not selected_vars:
+    #         print("主问题未找到可行解，终止迭代")
+    #         r += 1
+    #         break
+    #
+    #     # 步骤2：求解子问题 - 更新上界
+    #     model = Step_2(r, gamma_value, params, dual_vars)
+    #
+    #     # 检查收敛条件
+    #     gap = params.UB - params.LB
+    #     print(f"第{r}轮 - Gap: {gap:.4f} (UB={params.UB:.4f}, LB={params.LB:.4f})")
+    #
+    #     if gap < 1e-6:
+    #         print(f"算法在第{r}轮收敛")
+    #         break
+    #
+    #     r += 1
     
     end_time = time.time()
     elapsed_time = end_time - start_time

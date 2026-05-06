@@ -48,10 +48,10 @@ def generate_test_instances():
     print("正在生成测试实例...")
     instances = []
     # 固定问题规模，例如 L=20, T=8, B=20
-    L, T, B = 20, 4, 10
+    L, T, B = 10, 4, 3
 
     # 生成 5 个不同的随机实例用于取平均值，减少随机误差
-    for i in range(5):
+    for i in range(20):
         # 直接存储参数配置，在运行时初始化
         instances.append({'L': L, 'T': T, 'B': B, 'instance_id': i+1})
     
@@ -221,7 +221,7 @@ def plot_sensitivity_analysis(results):
         ]
     else:
         # 中文标签版本
-        xlabel = '保护参数 Γ 比例'
+        xlabel = '参数 Γ '
         ylabel = '变化百分比 (%)'
         title = '鲁棒优化参数 Γ 敏感性分析 - 变化百分比'
         labels = [

@@ -104,13 +104,13 @@ def write_results_to_csv(output_file, instance_sets, results, gamma_ratios):
 def main():
     # 定义8个实例集 [L, T, B]
     instance_sets = [
-        [10, 4, 10],
-        [10, 4, 20],
-        [20, 8, 10],
-        [20, 8, 20],
+        # [10, 4, 10],
+        # [10, 4, 20],
+        # [20, 8, 10],
+        # [20, 8, 20],
         # [30, 12, 10],
         # [30, 12, 20],
-        [40, 16, 10],
+        # [40, 16, 10],
         [40, 16, 20],
         # [50, 20, 10],
         # [50, 20, 20],
@@ -138,7 +138,7 @@ def main():
     results = {}
 
     # CSV输出文件
-    output_file = "computational_results_1.csv"
+    output_file = "computational_results_1_middle.csv"
     
     # 初始化CSV文件（只写表头）
     with open(output_file, 'w', newline='', encoding='utf-8-sig') as f:

@@ -48,7 +48,7 @@ def generate_test_instances():
     print("正在生成测试实例...")
     instances = []
     # 固定问题规模，例如 L=20, T=8, B=20
-    L, T, B = 10, 4, 3
+    L, T, B = 20, 8, 20
 
     # 生成 5 个不同的随机实例用于取平均值，减少随机误差
     for i in range(20):
@@ -208,13 +208,12 @@ def plot_sensitivity_analysis(results):
     cost_percentage = calculate_percentage_change(results['avg_cost'])
     time_percentage = calculate_percentage_change(results['avg_time'])
     
-    fig, ax1 = plt.subplots(figsize=(14, 8))
+    fig, ax1 = plt.subplots(figsize=(12, 6))
     
     if USE_ENGLISH_LABELS:
         # 英文标签版本
         xlabel = 'Protection Parameter $\Gamma$ Ratio'
         ylabel = 'Percentage Change (%)'
-        title = 'Sensitivity Analysis of Robust Parameter $\Gamma$'
         labels = [
             'Cost Change (%)',
             'Time Change (%)'
@@ -223,7 +222,6 @@ def plot_sensitivity_analysis(results):
         # 中文标签版本
         xlabel = '参数 Γ '
         ylabel = '变化百分比 (%)'
-        title = '鲁棒优化参数 Γ 敏感性分析 - 变化百分比'
         labels = [
             '鲁棒运输成本',
             '算法运行时间'
@@ -231,8 +229,8 @@ def plot_sensitivity_analysis(results):
     
     # Y轴 - 变化百分比
     color_cost = 'tab:blue'
-    ax1.set_xlabel(xlabel, fontsize=14, fontweight='bold')
-    ax1.set_ylabel(ylabel, fontsize=14, fontweight='bold', color=color_cost)
+    ax1.set_xlabel(xlabel, fontsize=14, fontweight='bold', labelpad=30)
+    ax1.set_ylabel(ylabel, fontsize=14, fontweight='bold', color=color_cost, labelpad=25)
     ax1.tick_params(axis='y', labelcolor=color_cost, labelsize=12)
     ax1.tick_params(axis='x', labelsize=12)
     
@@ -243,7 +241,7 @@ def plot_sensitivity_analysis(results):
     # 绘制时间变化百分比曲线
     color_time = 'tab:red'
     ax2 = ax1.twinx()
-    ax2.set_ylabel(ylabel, fontsize=14, fontweight='bold', color=color_time)
+    ax2.set_ylabel(ylabel, fontsize=14, fontweight='bold', color=color_time, labelpad=25)
     ax2.tick_params(axis='y', labelcolor=color_time, labelsize=12)
     
     line2 = ax2.plot(gamma, time_percentage, marker='d', color=color_time, linewidth=2.5, 
@@ -261,9 +259,6 @@ def plot_sensitivity_analysis(results):
     
     # 添加网格
     ax1.grid(True, alpha=0.3, linestyle='--')
-    
-    # 添加标题
-    plt.title(title, fontsize=16, fontweight='bold', pad=20)
     
     # 调整布局
     plt.tight_layout()
